@@ -120,14 +120,14 @@ function analyze(pair, now) {
     action = "WAIT";
     invest = "Abhi nahi — chase mat karo";
     verdict = `Score ${score}. Move stretch ho chuka hai. Elite entry nahi hai.`;
-  } else if (steadyUp && buyPressure && live && liq >= 40000 && !tooNew && score >= 85) {
+  } else if (steadyUp && buyPressure && live && liq >= 40000 && !tooNew && score >= 68) {
     action = "ENTER";
     invest = "Haan, sirf chhota size";
-    verdict = `Score ${score}, best quality. Poori capital nahi — 1% se 2% tak, stop ke saath.`;
+    verdict = `Entry · score ${score}. Poori capital nahi — 1% se 2% tak, stop ke saath.`;
   } else if (pc.h1 > 0 && h1.ratio >= 1 && liq >= 25000 && !deadBook && score >= 60) {
     action = "HOLD";
     invest = "Naya add mat karo";
-    verdict = `Score ${score}. Agar pehle se hai to hold. Fresh entry ke liye score 85+ ka wait karo.`;
+    verdict = `Hold · score ${score}. Agar pehle se hai to hold. Fresh entry alag se upar dikhegi.`;
   } else if (deadBook || score < 45) {
     action = "WAIT";
     invest = "Abhi nahi";

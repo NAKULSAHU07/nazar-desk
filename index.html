@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="hi">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Nazar — DexScreener live desk</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <header class="top">
+      <div class="brand">
+        <span class="mark" aria-hidden="true"></span>
+        <div>
+          <strong>Nazar</strong>
+          <small>DexScreener live desk</small>
+        </div>
+      </div>
+      <div class="live" id="live">
+        <span class="dot"></span>
+        <span id="live-label">connect ho raha hai</span>
+      </div>
+    </header>
+
+    <p class="note">
+      Yeh financial advice nahi hai. Signal public price, liquidity aur buy/sell se bante hain — guarantee nahi.
+      Memecoin zero ho sakta hai. Sirf wohi paisa lagao jo kho sakte ho. Paid boost hone se coin best nahi banta.
+    </p>
+
+    <main>
+      <section id="hero" class="hero" aria-live="polite"></section>
+
+      <div class="toolbar">
+        <div class="chips" id="chains"></div>
+        <form id="search-form">
+          <input id="search" type="search" placeholder="Symbol ya address" autocomplete="off" />
+          <button type="submit">Dhundo</button>
+        </form>
+        <button id="clear-search" class="ghost" hidden>List par wapas</button>
+      </div>
+
+      <div class="chips sub" id="actions"></div>
+      <section id="list" class="list"></section>
+    </main>
+
+    <aside id="drawer" class="drawer" hidden></aside>
+    <div id="toast" class="toast" hidden></div>
+    <script src="rank.js"></script>
+    <script src="app.js"></script>
+  </body>
+</html>

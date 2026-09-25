@@ -27,6 +27,7 @@ const state = {
 };
 
 const hero = document.querySelector("#hero");
+const weak = document.querySelector("#weak");
 const list = document.querySelector("#list");
 const drawer = document.querySelector("#drawer");
 const toast = document.querySelector("#toast");
@@ -78,6 +79,11 @@ list.addEventListener("click", (event) => {
   const button = event.target.closest("[data-open]");
   if (!button) return;
   openCoin(button.dataset.open);
+});
+
+weak.addEventListener("click", (event) => {
+  const button = event.target.closest("[data-open]");
+  if (button) openCoin(button.dataset.open);
 });
 
 hero.addEventListener("click", (event) => {
@@ -154,22 +160,30 @@ function track(coins) {
   }
 }
 
+function meter(score) {
+  const tone = score >= 85 ? "var(--enter)" : score >= 45 ? "var(--wait)" : "var(--avoid)";
+  return `<span class="meter" title="score ${score}"><i style="width:${score}%;background:${tone}"></i></span>`;
+}
+
 function render() {
   const coins = visibleCoins();
-  const best = coins.find((coin) => coin.action === "ENTER") || coins.find((coin) => coin.action === "HOLD") || coins[0];
+  const best = coins[0];
+  const junk = [...coins].sort((a, b) => a.score - b.score).slice(0, 3);
   if (!best) {
     hero.className = "hero empty";
     hero.innerHTML = state.search
       ? "Is search par koi liquid pair nahi mila."
       : "Is filter par koi coin nahi. Chain ya signal badlo.";
+    weak.innerHTML = "";
   } else {
     hero.className = "hero";
     const session = state.session.get(keyOf(best));
     const fromOpen = session?.open ? ((best.priceUsd - session.open) / session.open) * 100 : 0;
+    const elite = best.score >= 85 && best.action === "ENTER";
     hero.innerHTML = `
       <div class="kicker">
-        <span>${state.search ? "Search ka best" : "Abhi ka best setup"}</span>
-        <span class="badge ${best.action}">${ACTION_HI[best.action]} · ${best.score}</span>
+        <span>${elite ? "Best quality live signal" : `Highest score ${best.score} · elite tab jab 85+ aur Entry ho`}</span>
+        <span class="badge ${best.action}">${best.quality || ""} ${ACTION_HI[best.action]} · ${best.score}</span>
       </div>
       <div class="hero-row">
         ${avatar(best)}
@@ -196,6 +210,18 @@ function render() {
         <a href="${best.url}" target="_blank" rel="noreferrer">DexScreener</a>
         <button class="ghost" type="button" data-watch="${keyOf(best)}">${isWatched(keyOf(best)) ? "Watch hatayo" : "Exit alert lagao"}</button>
       </div>`;
+    weak.innerHTML = `
+      <div class="kicker"><span>Score 1 side — inme mat ghusna</span></div>
+      <div class="weak-row">${junk
+        .map(
+          (coin) => `<button type="button" data-open="${keyOf(coin)}">
+            <b>${coin.symbol}</b>
+            <span class="badge AVOID">${coin.score}</span>
+            ${meter(coin.score)}
+            <small>${coin.quality} · ${fmtUsd(coin.liquidityUsd)}</small>
+          </button>`,
+        )
+        .join("")}</div>`;
   }
 
   list.innerHTML = coins
@@ -206,7 +232,7 @@ function render() {
         <div class="card-top">
           ${avatar(coin)}
           <div>
-            <div class="sym">${coin.symbol} <span class="badge ${coin.action}">${ACTION_HI[coin.action]}</span></div>
+            <div class="sym">${coin.symbol} <span class="badge ${coin.action}">${coin.score} ${ACTION_HI[coin.action]}</span> ${meter(coin.score)}</div>
             <div class="subline">${coin.name} · ${coin.chainId} · ${coin.dexId} · age ${age(coin.ageMin)}</div>
             <div class="subline">${coin.invest}</div>
           </div>

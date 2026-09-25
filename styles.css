@@ -77,6 +77,29 @@ main { padding: 18px 28px 48px; }
 }
 .hero { padding: 22px; box-shadow: var(--shadow); min-height: 180px; }
 .hero.empty { color: var(--muted); }
+.meter {
+  display: inline-block;
+  width: 72px;
+  height: 6px;
+  border-radius: 99px;
+  background: #2a2e24;
+  vertical-align: middle;
+  overflow: hidden;
+}
+.meter i { display: block; height: 100%; border-radius: 99px; }
+.weak { margin-top: 14px; }
+.weak-row { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 8px; }
+.weak-row button {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: #14160f;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 10px 12px;
+}
+.weak-row small { color: var(--muted); }
+
 .kicker {
   display: flex;
   justify-content: space-between;

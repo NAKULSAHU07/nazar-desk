@@ -81,59 +81,60 @@ function analyze(pair, now) {
   const live = vol1 >= 8000 && m5.buys + m5.sells >= 4;
   const steadyUp = pc.m5 > -1 && pc.h1 > 0 && pc.h1 < 45 && pc.h6 > -15;
 
+  const score = qualityScore({
+    liq,
+    vol1,
+    vol5,
+    vol24,
+    pc,
+    m5,
+    h1,
+    ageMin,
+    tooNew,
+    thin,
+    dumping,
+    sellHeavy,
+    fading,
+    blowoff,
+    deadBook,
+  });
+  const quality = scoreGrade(score);
+
   let action = "WAIT";
   let invest = "Abhi nahi";
-  let verdict = "Signal mix hai. Jab tak 5m aur 1h dono buyers ke saath na hon, paisa mat lagao.";
+  let verdict = "Signal mix hai. Score 85+ ke bina best-quality entry nahi maanna.";
 
-  if (thin || (tooNew && liq < 40000)) {
+  if (thin || (tooNew && liq < 40000) || score <= 12) {
     action = "AVOID";
     invest = "Nahi";
-    verdict = "Isme invest mat karo. Liquidity ya age itni kam hai ki exit ke time price gir sakta hai.";
+    verdict = `Score ${score}. Yeh quality nahi hai — score 1 jaisi list mein yeh avoid hai.`;
   } else if (dumping && sellHeavy) {
     action = "AVOID";
     invest = "Nahi";
-    verdict = "Dump chal raha hai. Girte hue ko pakadne ki koshish mat karo.";
+    verdict = `Score ${score}. Dump chal raha hai. Girte hue ko pakadne ki koshish mat karo.`;
   } else if (fading || (pc.h24 >= 80 && pc.h1 < 0 && h1.ratio < 1)) {
     action = "EXIT";
     invest = "Nayi entry nahi";
-    verdict = "Agar position hai to exit lo. Upar ja chuka hai aur ab buyers kamzor pad rahe hain.";
+    verdict = `Score ${score}. Agar position hai to exit lo. Buyers kamzor pad rahe hain.`;
   } else if (blowoff && pc.m5 > 0) {
     action = "WAIT";
     invest = "Abhi nahi — chase mat karo";
-    verdict = "Move already stretch ho chuka hai. Itne upar se entry lene par exit jaldi chahiye, reward kharab hai.";
-  } else if (steadyUp && buyPressure && live && liq >= 25000 && !tooNew) {
+    verdict = `Score ${score}. Move stretch ho chuka hai. Elite entry nahi hai.`;
+  } else if (steadyUp && buyPressure && live && liq >= 40000 && !tooNew && score >= 85) {
     action = "ENTER";
     invest = "Haan, sirf chhota size";
-    verdict = "Yeh abhi ka sabse saaf setup hai. Poori capital nahi — capital ka 1% se 2% tak, stop ke saath.";
-  } else if (pc.h1 > 0 && h1.ratio >= 1 && liq >= 25000 && !deadBook) {
+    verdict = `Score ${score}, best quality. Poori capital nahi — 1% se 2% tak, stop ke saath.`;
+  } else if (pc.h1 > 0 && h1.ratio >= 1 && liq >= 25000 && !deadBook && score >= 60) {
     action = "HOLD";
     invest = "Naya add mat karo";
-    verdict = "Agar pehle se kharida hai to hold kar sakte ho. Fresh entry ke liye 5m buys aur tez hone do.";
-  } else if (deadBook) {
+    verdict = `Score ${score}. Agar pehle se hai to hold. Fresh entry ke liye score 85+ ka wait karo.`;
+  } else if (deadBook || score < 45) {
     action = "WAIT";
     invest = "Abhi nahi";
-    verdict = "Chart so raha hai. Volume ke bina entry lene ka fayda nahi.";
+    verdict = `Score ${score}. Best quality nahi. Volume aur buyers ke bina entry mat lo.`;
+  } else {
+    verdict = `Score ${score}. Theek-thaak coin hai, elite signal nahi.`;
   }
-
-  let score = 48;
-  if (liq >= 25000) score += 8;
-  if (liq >= 80000) score += 8;
-  if (liq >= 250000) score += 4;
-  if (liq < 15000) score -= 22;
-  const vlr = liq > 0 ? vol24 / liq : 0;
-  if (vlr >= 0.5 && vlr <= 6) score += 8;
-  if (vlr > 18) score -= 6;
-  if (h1.ratio >= 1.35 && h1.buys >= 10) score += 12;
-  else if (h1.ratio < 0.7 && h1.sells >= 8) score -= 14;
-  if (m5.ratio >= 1.15 && m5.buys + m5.sells >= 6) score += 6;
-  if (pc.h1 > 0 && pc.h1 < 35) score += 8;
-  if (pc.h1 >= 80) score -= 10;
-  if (pc.m5 <= -8) score -= 8;
-  if (pc.h6 <= -40) score -= 10;
-  if (ageMin != null && ageMin >= 90 && ageMin <= 60 * 24 * 10) score += 6;
-  if (tooNew) score -= 12;
-  if (vol1 >= 20000) score += 4;
-  score = Math.max(1, Math.min(99, Math.round(score)));
 
   const stop = price * 0.85;
   const target1 = price * 1.25;
@@ -174,6 +175,7 @@ function analyze(pair, now) {
     pairCreatedAt: pair.pairCreatedAt || null,
     action,
     score,
+    quality,
     invest,
     verdict,
     why: why.slice(0, 5),
@@ -198,7 +200,7 @@ function rankPairs(pairs, now = Date.now()) {
   }
   return [...best.values()]
     .map((pair) => analyze(pair, now))
-    .sort((a, b) => ACTION_ORDER[a.action] - ACTION_ORDER[b.action] || b.score - a.score);
+    .sort((a, b) => b.score - a.score || ACTION_ORDER[a.action] - ACTION_ORDER[b.action]);
 }
 
 function pickBest(coins) {
@@ -208,6 +210,65 @@ function pickBest(coins) {
     coins[0] ||
     null
   );
+}
+
+function qualityScore(input) {
+  const { liq, vol1, vol24, pc, m5, h1, ageMin, tooNew, thin, dumping, sellHeavy, fading, blowoff, deadBook } = input;
+  let liqPts = 0;
+  if (liq >= 500000) liqPts = 18;
+  else if (liq >= 150000) liqPts = 15;
+  else if (liq >= 80000) liqPts = 11;
+  else if (liq >= 40000) liqPts = 7;
+  else if (liq >= 20000) liqPts = 4;
+  else if (liq >= 12000) liqPts = 2;
+
+  const samples = h1.buys + h1.sells;
+  let flowPts = 0;
+  if (samples >= 80 && h1.ratio >= 1.8) flowPts = 24;
+  else if (samples >= 40 && h1.ratio >= 1.45) flowPts = 16;
+  else if (samples >= 20 && h1.ratio >= 1.2) flowPts = 9;
+  else if (samples >= 8 && h1.ratio >= 1) flowPts = 4;
+  if (m5.buys + m5.sells >= 12 && m5.ratio >= 1.35) flowPts += 4;
+  if (sellHeavy) flowPts = Math.min(flowPts, 3);
+
+  let momPts = 0;
+  if (pc.h1 >= 3 && pc.h1 <= 18 && pc.m5 > -1 && pc.m5 < 10 && pc.h6 > -8) momPts = 24;
+  else if (pc.h1 > 0 && pc.h1 <= 35 && pc.m5 > -2) momPts = 12;
+  else if (pc.h1 > 35 && pc.h1 < 70) momPts = 6;
+  if (blowoff || fading) momPts = Math.min(momPts, 3);
+  if (pc.h1 <= -10) momPts = 0;
+
+  let volPts = 0;
+  if (vol1 >= 100000) volPts = 16;
+  else if (vol1 >= 30000) volPts = 11;
+  else if (vol1 >= 8000) volPts = 6;
+  else if (vol1 >= 2500) volPts = 3;
+  const vlr = liq > 0 ? vol24 / liq : 99;
+  if (vlr > 20 || vlr < 0.15) volPts = Math.max(0, volPts - 4);
+  if (deadBook) volPts = 0;
+
+  let safePts = 4;
+  if (ageMin != null && ageMin >= 180 && ageMin <= 60 * 24 * 21) safePts = 14;
+  else if (ageMin != null && ageMin >= 90) safePts = 8;
+  if (tooNew) safePts = 0;
+  if (thin || dumping) safePts = 0;
+
+  let score = liqPts + Math.min(flowPts, 28) + momPts + volPts + safePts;
+  if (liq < 3000) score = 1;
+  else if (liq < 8000 && (deadBook || dumping)) score = Math.min(score, 4);
+  else if (thin) score = Math.min(score, 14);
+  else if (dumping && sellHeavy) score = Math.min(score, 10);
+  else if (tooNew && liq < 40000) score = Math.min(score, 22);
+  else if (blowoff) score = Math.min(score, 58);
+  return Math.max(1, Math.min(99, Math.round(score)));
+}
+
+function scoreGrade(score) {
+  if (score >= 85) return "Elite";
+  if (score >= 70) return "Strong";
+  if (score >= 45) return "Average";
+  if (score >= 15) return "Weak";
+  return "Junk";
 }
 
 function signed(value) {
@@ -229,6 +290,8 @@ function fmtAge(minutes) {
   if (minutes < 60 * 24) return `${Math.round(minutes / 60)}h`;
   return `${Math.round(minutes / (60 * 24))}d`;
 }
+
+{ fmtPx };
 
 window.rankPairs=rankPairs;
 window.pickBest=pickBest;

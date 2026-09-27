@@ -174,15 +174,25 @@ function meter(score) {
 
 function render() {
   const coins = visibleCoins();
-  const entries = coins.filter((coin) => coin.action === "ENTER");
-  const best = entries[0] || coins[0];
+  const entries = coins.filter((coin) => coin.heldHour);
+  const best =
+    entries[0] ||
+    coins.find(
+      (coin) =>
+        coin.ageMin >= 25 &&
+        coin.ageMin <= 100 &&
+        coin.priceChange.h1 >= -5 &&
+        coin.priceChange.h1 <= 45 &&
+        coin.liquidityUsd >= 12000 &&
+        coin.action !== "AVOID",
+    );
   const junk = [...coins].sort((a, b) => a.score - b.score).slice(0, 3);
   if (!best) {
     hero.className = "hero empty";
     hero.innerHTML = state.search
       ? "Is search par koi liquid pair nahi mila."
-      : "Is filter par koi coin nahi. Chain ya signal badlo.";
-    entriesBox.innerHTML = "";
+      : "Abhi koi naya coin 30–60 minute bina loss hold nahi kar raha. Jo bahut upar bhag chuka hai uska entry nahi. Naye coins har 20 second check ho rahe hain.";
+    entriesBox.innerHTML = `<div class="kicker"><span>Entry level · 30–60 min bina loss</span></div><p class="subline">Is minute entry level wala coin nahi.</p>`;
     weak.innerHTML = "";
   } else {
     hero.className = "hero";
@@ -190,7 +200,7 @@ function render() {
     const fromOpen = session?.open ? ((best.priceUsd - session.open) / session.open) * 100 : 0;
     hero.innerHTML = `
       <div class="kicker">
-        <span>${best.action === "ENTER" ? "Live entry" : "Abhi top signal Entry nahi hai"}</span>
+        <span>${best.heldHour ? "30–60 min hold, entry level" : "Naya coin, 30 min hold abhi complete nahi"}</span>
         <span class="badge ${best.action}">${signalLabel(best)}</span>
       </div>
       <div class="hero-row">
@@ -211,30 +221,31 @@ function render() {
       </div>
       <ul class="why">${best.why.map((item) => `<li>${item}</li>`).join("")}</ul>
       <div class="levels">
-        ${level("Stop", best.levels.stop)}
-        ${level("Exit 1 · +25%", best.levels.target1)}
-        ${level("Exit 2 · +55%", best.levels.target2)}
+        ${level("Entry low", best.entryLow || best.levels.stop)}
+        ${level("Entry high", best.entryHigh || best.levels.target1)}
+        ${level("Iske neeche exit", best.entryStop || best.levels.stop)}
       </div>
       <div class="hero-actions">
         <button class="solid" type="button" data-open="${keyOf(best)}">Exit plan kholo</button>
         <a href="${best.url}" target="_blank" rel="noreferrer">DexScreener</a>
         <button class="ghost" type="button" data-watch="${keyOf(best)}">${isWatched(keyOf(best)) ? "Watch hatayo" : "Exit alert lagao"}</button>
       </div>`;
+    const ready = coins.filter((coin) => coin.heldHour);
     entriesBox.innerHTML = `
-      <div class="kicker"><span>Entry · score</span></div>
+      <div class="kicker"><span>Entry level · 30–60 min bina loss</span></div>
       <div class="weak-row">${
-        entries.length
-          ? entries
+        ready.length
+          ? ready
               .slice(0, 8)
               .map(
                 (coin) => `<button type="button" data-open="${keyOf(coin)}">
             <b>${coin.symbol}</b>
-            <span class="badge ENTER">${signalLabel(coin)}</span>
-            ${meter(coin.score)}
+            <span class="badge ENTER">Entry ${fmtPx(coin.entryLow)}–${fmtPx(coin.entryHigh)}</span>
+            <small>score ${coin.score} · ${Math.round(coin.ageMin)}m</small>
           </button>`,
               )
               .join("")
-          : `<span class="subline">Is filter par abhi koi Entry nahi.</span>`
+          : `<span class="subline">Abhi koi naya coin 30–60 min bina loss hold nahi kar raha. Naye coins track ho rahe hain.</span>`
       }</div>`;
     weak.innerHTML = `
       <div class="kicker"><span>Door raho · score 1</span></div>
@@ -396,23 +407,112 @@ async function pairsForTokens(tokens) {
   return pairs;
 }
 
+async function newPoolTokens() {
+  const tokens = [];
+  for (const chain of ["solana", "bsc", "base"]) {
+    try {
+      const data = await getJson(`https://api.geckoterminal.com/api/v2/networks/${chain}/new_pools?page=1`);
+      for (const pool of data.data || []) {
+        const id = pool.relationships?.base_token?.data?.id || "";
+        const prefix = `${chain}_`;
+        if (!id.startsWith(prefix)) continue;
+        tokens.push({ chainId: chain, tokenAddress: id.slice(prefix.length) });
+      }
+    } catch (error) {
+      console.error(error);
+    }
+  }
+  return tokens;
+}
+
+function readBook() {
+  try {
+    return JSON.parse(localStorage.getItem("nazar-book") || "{}");
+  } catch {
+    return {};
+  }
+}
+
+function remember(coins) {
+  const book = readBook();
+  const now = Date.now();
+  for (const coin of coins) {
+    if (coin.ageMin == null || coin.ageMin > 20) continue;
+    const key = `${coin.chainId}:${coin.address}`;
+    if (!book[key]) {
+      book[key] = { t: now, price: coin.priceUsd, chainId: coin.chainId, address: coin.address };
+    }
+  }
+  for (const key of Object.keys(book)) {
+    if (now - book[key].t > 3 * 60 * 60 * 1000) delete book[key];
+  }
+  localStorage.setItem("nazar-book", JSON.stringify(book));
+  return book;
+}
+
+function bookTokens(book) {
+  const now = Date.now();
+  return Object.values(book)
+    .filter((row) => {
+      const mins = (now - row.t) / 60000;
+      return mins >= 20 && mins <= 90;
+    })
+    .slice(0, 30)
+    .map((row) => ({ chainId: row.chainId, tokenAddress: row.address }));
+}
+
+function applyBook(coins, book) {
+  const now = Date.now();
+  return coins.map((coin) => {
+    const row = book[`${coin.chainId}:${coin.address}`];
+    if (!row) return coin;
+    const mins = (now - row.t) / 60000;
+    const held =
+      mins >= 30 &&
+      mins <= 75 &&
+      coin.priceUsd >= row.price * 0.98 &&
+      coin.liquidityUsd >= 8000 &&
+      coin.priceChange.m5 > -8;
+    if (!held) return coin;
+    const entryLow = row.price * 0.99;
+    const entryHigh = coin.priceUsd * 1.01;
+    return {
+      ...coin,
+      action: "ENTER",
+      heldHour: true,
+      invest: "Entry level ke andar, chhota size",
+      entryLow,
+      entryHigh,
+      entryStop: row.price * 0.9,
+      verdict: `${Math.round(mins)} min se price ${fmtPx(row.price)} ke upar hai, loss nahi. Entry ${fmtPx(entryLow)} se ${fmtPx(entryHigh)}. ${fmtPx(row.price * 0.9)} ke neeche nikal jao.`,
+    };
+  });
+}
+
 async function loadBoard() {
   if (state.search) {
     const data = await getJson(`${DEX}/latest/dex/search?q=${encodeURIComponent(state.search)}`);
-    const coins = rankPairs(Array.isArray(data.pairs) ? data.pairs : []);
+    const coins = rankPairs(Array.isArray(data.pairs) ? data.pairs : []).map(withEntry);
     return { updatedAt: Date.now(), coins };
   }
-  const [top, latest, profiles] = await Promise.all([
-    getJson(`${DEX}/token-boosts/top/v1`),
+  const [latest, profiles, born] = await Promise.all([
     getJson(`${DEX}/token-boosts/latest/v1`),
     getJson(`${DEX}/token-profiles/latest/v1`),
+    newPoolTokens(),
   ]);
+  const book = readBook();
   const pairs = await pairsForTokens([
-    ...(Array.isArray(top) ? top : []),
     ...(Array.isArray(latest) ? latest : []),
     ...(Array.isArray(profiles) ? profiles : []),
+    ...born,
+    ...bookTokens(book),
   ]);
-  return { updatedAt: Date.now(), coins: rankPairs(pairs) };
+  const all = rankPairs(pairs);
+  const nextBook = remember(all);
+  const coins = applyBook(freshBoard(all), nextBook).sort(
+    (a, b) => Number(b.heldHour) - Number(a.heldHour) || b.score - a.score,
+  );
+  return { updatedAt: Date.now(), coins };
 }
 
 async function load() {
@@ -441,4 +541,4 @@ async function tick() {
 }
 
 tick();
-setInterval(tick, 15000);
+setInterval(tick, 20000);

@@ -203,6 +203,61 @@ function rankPairs(pairs, now = Date.now()) {
     .sort((a, b) => b.score - a.score || ACTION_ORDER[a.action] - ACTION_ORDER[b.action]);
 }
 
+function withEntry(coin) {
+  const px = num(coin.priceUsd);
+  const h1 = num(coin.priceChange?.h1);
+  const m5 = num(coin.priceChange?.m5);
+  const age = coin.ageMin;
+  const buys = coin.txns?.h1?.buys ?? 0;
+  const sells = coin.txns?.h1?.sells ?? 0;
+  const held =
+    age != null &&
+    age >= 28 &&
+    age <= 100 &&
+    h1 >= -2 &&
+    m5 >= -6 &&
+    coin.liquidityUsd >= 12000 &&
+    h1 < 80 &&
+    m5 < 25 &&
+    buys + sells >= 8 &&
+    buys >= sells * 0.85;
+  const dip = m5 <= -1 && h1 >= 0;
+  const entryLow = px * (dip ? 0.992 : 0.97);
+  const entryHigh = px * (dip ? 1.006 : 1.012);
+  const entryStop = px * 0.9;
+
+  let action = coin.action;
+  let invest = coin.invest;
+  let verdict = coin.verdict;
+  if (held) {
+    action = "ENTER";
+    invest = "Entry level ke andar, chhota size";
+    verdict = `Pichle 1 ghante mein loss nahi (${h1 >= 0 ? "+" : ""}${h1.toFixed(1)}%). Entry ${fmtPx(entryLow)} se ${fmtPx(entryHigh)}. ${fmtPx(entryStop)} ke neeche nikal jao.`;
+  } else if (age != null && age < 28 && coin.liquidityUsd >= 8000 && h1 > -15 && m5 > -10) {
+    action = "WAIT";
+    invest = "30 min hold ka wait";
+    verdict = `Abhi ${Math.max(1, Math.round(age))} min purana hai. Entry ${fmtPx(entryLow)}–${fmtPx(entryHigh)} tab, jab 30 min tak price is band ke neeche na gire.`;
+  } else if (age != null && age <= 150 && h1 < -2) {
+    action = "AVOID";
+    invest = "Nahi";
+    verdict = `1 ghante mein ${h1.toFixed(1)}%. Jo coin loss mein hai uska entry nahi.`;
+  }
+
+  return { ...coin, action, invest, verdict, heldHour: held, entryLow, entryHigh, entryStop };
+}
+
+function freshBoard(coins) {
+  return coins
+    .filter((coin) => coin.ageMin != null && coin.ageMin >= 2 && coin.ageMin <= 150)
+    .map(withEntry)
+    .sort((a, b) => Number(b.heldHour) - Number(a.heldHour) || Number(saneHold(b)) - Number(saneHold(a)) || b.score - a.score);
+}
+
+function saneHold(coin) {
+  const h1 = num(coin.priceChange?.h1);
+  return h1 >= -8 && h1 <= 45 && coin.liquidityUsd >= 10000 && coin.action !== "AVOID";
+}
+
 function pickBest(coins) {
   return (
     coins.find((coin) => coin.action === "ENTER") ||
@@ -295,4 +350,6 @@ function fmtAge(minutes) {
 
 window.rankPairs=rankPairs;
 window.pickBest=pickBest;
+window.withEntry=withEntry;
+window.freshBoard=freshBoard;
 })();
